@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <head>
+    <title> Store </title>
+    <link type = "text/css" rel = "stylesheet" href = {{url_for('static', filename = 'css/style.css')}}>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="products"></div>
+    <script type="text/babel" src="{{url_for('static', filename = 'js/my_script.js')}}"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+#products {
+    width: 100%;
+    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(auto-fill, 1fr);
+    grid-row-gap: .5em;
+    grid-column-gap: 1em;
+}
+
+#products div {
+    flex: 1;
+    border: 1px solid black;
+    display: flex;
+    align-items: center;
+    margin-right:20px;
+}
+
+.col {
+  flex: 1; /* additionally, equal width */
+  flex-direction: column;
+  align-items:center;
+  padding: 1em;
+  border: solid;
+}
+
+img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 50%;
+}
+

@@ -27,7 +27,6 @@ def home():
 @app.route('/products')
 def send_products():
     item_list = db.session.query(ItemTable, Item).join(Item, ItemTable.item_id == Item.id).all()
-    print(item_list)
     all_products = []
     for item in item_list:
         all_products.append({"id" : str(item[0].id), "name" : item[1].name, "price": item[1].price})

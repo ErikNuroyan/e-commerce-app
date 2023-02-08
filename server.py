@@ -37,7 +37,9 @@ def send_products():
 def purchase():
     id = request.json['item_id']
     print("Purchased item_id: " + str(id))
-    return 'OK'
+    
+    #TODO: Change this part correspondingly later
+    return Response(json.dumps({"purchase_status": "OK"}),  mimetype='application/json')
     
 
 if __name__ == "__main__":

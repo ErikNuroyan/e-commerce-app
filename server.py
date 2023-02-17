@@ -116,16 +116,22 @@ def purchase():
     status = 200
     if 'item_id' in request.json:
         item_id = request.json['item_id']
-        item = db.session.query(ItemTable).filter_by(id=item_id).first()
-        if item is None or type(item_id) != int:
+        item = db.session.query(ItemTable).filter_by(id=item_id)
+        if item.first() is None or type(item_id) != int:
             status = 422
     else:
         status = 422
     
-    #Handle the purchase in the later homeworks
     if status == 200:
-        print("Purchased item_id: " + str(item_id))
-    
+        product = db.session.query(Item).filter_by(id = item.first().item_id).first()
+        if product.quantity > 0:
+            product.quantity -= 1
+            item.delete()
+            db.session.commit()
+            print("Purchased item_id: " + str(item_id))
+        else:
+            status = 422
+
     return Response(json.dumps({"purchase_status": status}),  mimetype='application/json')
     
 @app.route('/store/delete', methods=['POST'])
@@ -160,8 +166,6 @@ def update():
     else:
         status = 422
     
-    print(status)
-
     if status == 200:
         old_count = db.session.query(ItemTable).filter_by(item_id = selected_item_id).count()
         if old_count < selected_item.quantity:

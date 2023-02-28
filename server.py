@@ -63,19 +63,25 @@ def get_products():
 @jwt_required()
 def get_card_products():
     _, _, token = request.headers['Authorization'].partition(' ')
-    session = sessions.find_one({"token": token})
-    if session is None:
-        return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
+    user_mail = get_jwt_identity()
+    user = User.query.filter_by(email = user_mail).first()
+    user_session = sessions.find_one({'user_id': user.id})
 
-    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+    if session is None:
+        return Response(json.dumps({"status": 401, "message": "User not logged in"}),  mimetype='application/json')
+
+    return Response(json.dumps({"card_products": user_session["card_products"], "status": 200}),  mimetype='application/json')
 
 @app.route('/add_to_card', methods=['POST'])
 @jwt_required()
 def add_to_card():
     _, _, token = request.headers['Authorization'].partition(' ')
-    session = sessions.find_one({"token": token})
-    if session is None:
-        return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
+    user_mail = get_jwt_identity()
+    user = User.query.filter_by(email = user_mail).first()
+    user_session = sessions.find_one({'user_id': user.id})
+
+    if user_session is None:
+        return Response(json.dumps({"status": 401, "message": "User not logged in"}),  mimetype='application/json')
 
     if 'item_id' in request.json:
         item_id = ObjectId(request.json['item_id'])
@@ -85,16 +91,19 @@ def add_to_card():
         return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
 
 
-    sessions.update_one({"token" : token}, {"$push": { "card_products": request.json['item_id']} })
+    sessions.update_one({'user_id': user.id}, {"$push": { "card_products": request.json['item_id']} })
 
-    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+    return Response(json.dumps({"status": 200, "message": "Added to the card"}),  mimetype='application/json')
 
 @app.route('/remove_from_card', methods=['POST'])
 @jwt_required()
 def remove_from_card():
     _, _, token = request.headers['Authorization'].partition(' ')
-    session = sessions.find_one({"token": token})
-    if session is None:
+    user_mail = get_jwt_identity()
+    user = User.query.filter_by(email = user_mail).first()
+    user_session = sessions.find_one({'user_id': user.id})
+
+    if user_session is None:
         return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
 
     if 'item_id' in request.json:
@@ -104,9 +113,9 @@ def remove_from_card():
     else:
         return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
 
-    sessions.update_one({"token" : token}, {"$pull": { "card_products": request.json['item_id']} })
+    sessions.update_one({'user_id': user.id}, {"$pull": { "card_products": request.json['item_id']} })
 
-    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+    return Response(json.dumps({"status": 200, "message": "Removed from the card"}),  mimetype='application/json')
 
 @app.route('/products/add', methods=['POST'])
 def add_unique_product():
@@ -195,13 +204,18 @@ def login():
     if any(value == "" for value in request.json.values()):
         return Response(json.dumps({"register_status": 422, "message" : "Wrong values"}), mimetype='application/json')
 
-    user = User.query.filter_by(email = request.json['email']).first()
+    mail = request.json['email']
+    user = User.query.filter_by(email = mail).first()
     if user is not None and user.check_password(request.json['password']):
         #TODO: Make expiring tokens
-        access_token = create_access_token(identity = request.json['email'])
+        access_token = create_access_token(identity = mail)
 
         #TODO: Add more fields to this
-        sessions.insert_one({'email' : request.json['email'], 'token' : access_token, "card_products": []})
+        user_session = sessions.find_one({"user_id": user.id})
+        if user_session is None:
+            sessions.insert_one({'user_id' : user.id, 'active_sessions' : [access_token], 'card_products': [], 'last_login': datetime.now()})
+        else:
+            sessions.update_one({'user_id' : user.id}, {'$push': {'active_sessions': access_token}, '$set': {'last_login': datetime.now()}})
 
         return Response(json.dumps({"login_status": 200, "access_token": access_token, "user_name": user.name, "message": "Logged in Successfully"}), mimetype='application/json')
     
@@ -211,11 +225,15 @@ def login():
 @jwt_required()
 def logout():
     _, _, token = request.headers['Authorization'].partition(' ')
-    count = sessions.count_documents({"token" : token})
+    user_mail = get_jwt_identity()
+    user = User.query.filter_by(email = user_mail).first()
+
+    count = sessions.count_documents({'user_id' : user.id})
     if count == 0:
         return Response(json.dumps({"logout_status": 422, "message": "You are not logged in!"}), mimetype='application/json')
     
-    sessions.delete_one({"token": token})
+    sessions.update_one({'user_id' : user.id}, {'$pull': {'active_sessions': token}})
+
     response = jsonify({"logout_status": 200, "message": "Logged out successfully"})
     unset_jwt_cookies(response)
     return response

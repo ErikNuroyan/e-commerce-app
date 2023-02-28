@@ -1,122 +1,150 @@
 
 function App() {
   const [products, setProducts] = React.useState([]);
+  const [cardProducts, setCardProducts] = React.useState(new Array());
   const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
-    fetch('http://127.0.0.1:8787/store/products')
-      .then(response => response.json())
-      .then(products => {
-        setProducts(products);
-      })
-      .catch(error => {
-        setError(error);
-      });
+    // Get the products
+    fetch('http://127.0.0.1:8787/products')
+    .then(response => response.json())
+    .then(products => {
+      setProducts(products);
+    })
+    .catch(error => {
+      setError(error);
+    });
+
+    //Get card information if logged in
+    const token = localStorage.getItem("token");
+    if (token !== null) {
+      const requestOptions = {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}
+      };
+      
+      fetch('http://127.0.0.1:8787/card_products', requestOptions)
+        .then(response => response.json())
+        .then(response => {
+          if (response.status != 200) {
+            throw new Error('Error getting card info');
+          }
+          setCardProducts(response.card_products)
+        })
+        .catch(error => {
+          alert(error);
+        });
+    }
+
   }, []);
 
-  const handlePurchase = productId => {
+  const handlePurchase = () => {
+    if (localStorage.getItem("token") === null) {
+      alert("Please Log in");
+      return;
+    }
+
     // Make a POST request to the server to purchase the product
     const requestOptions = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: productId})
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem("token")},
+      body: JSON.stringify({ item_ids: cardProducts})
     };
-      
-    fetch('http://127.0.0.1:8787/store/purchase', requestOptions)
+    
+    fetch('http://127.0.0.1:8787/products/purchase', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.purchase_status != 200) {
           throw new Error('Error purchasing product');
         }
-        alert('Product purchased successfully!');
+        alert('Products purchased successfully!');
       })
       .catch(error => {
-        console.error(error);
-        alert('Error purchasing product');
+        alert(error);
       });
   };
 
-  const handleDelete = productId => {
-    // Make a POST request to the server to delete the product
+  const addToCard = productId => {
+    if (localStorage.getItem("token") === null) {
+      alert("Please Log in");
+      return;
+    }
+
     const requestOptions = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem("token")},
       body: JSON.stringify({ item_id: productId})
     };
-      
-    fetch('http://127.0.0.1:8787/store/delete', requestOptions)
+    
+    fetch('http://127.0.0.1:8787/add_to_card', requestOptions)
       .then(response => response.json())
       .then(response => {
-        if (response.delete_status != 200) {
-          throw new Error('Error deleting product');
+        if (response.status != 200) {
+          throw new Error('Error adding the product');
         }
-        alert('Product deleted successfully!');
+        setCardProducts([productId, ...cardProducts]);
+        alert('Product added to card successfully!');
       })
       .catch(error => {
-        console.error(error);
-        alert('Error deleting product');
+        alert(error);
       });
   };
 
-  const addToStore = (productId) => {
-    fetch("http://127.0.0.1:8787/store/add", {
-      method: "POST",
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        selected_item_id : productId
-      })
-    }).then(response => response.json())
-      .then(response => {
-       if (response.add_to_store_status != 200) {
-         throw new Error('Error adding the product to the store');
-       }
-       alert('Product added to the store successfully!');
-     })
-     .catch(error => {
-       console.error(error);
-       alert('Error adding the product to the store');
-     });
-  };
+  const removeFromCard = productId => {
+    if (localStorage.getItem("token") === null) {
+      alert("You're not logged in");
+      return;
+    }
 
-  const updateStoreItem = (replaceItemId, selectedItemId) => {
-    fetch("http://127.0.0.1:8787/store/update", {
-      method: "PUT",
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        replace_item_id : replaceItemId,
-        selected_item_id : selectedItemId
-      })
-    }).then(response => response.json())
+    const requestOptions = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem("token")},
+      body: JSON.stringify({ item_id: productId})
+    };
+    
+    fetch('http://127.0.0.1:8787/remove_from_card', requestOptions)
+      .then(response => response.json())
       .then(response => {
-       if (response.update_status != 200) {
-         throw new Error('Error updating the product');
-       }
-       alert('Product updated successfully!');
-     })
-     .catch(error => {
-       console.error(error);
-       alert('Error updating the product');
-     });
+        if (response.status != 200) {
+          throw new Error('Error removing the product from the card');
+        }
+        var array = [...cardProducts];
+        var index = array.indexOf(productId);
+        if (index !== -1) {
+          array.splice(index, 1);
+          setCardProducts(array);
+        }
+        alert('Product removed from the card successfully!');
+      })
+      .catch(error => {
+        alert(error);
+      });
   };
-
 
   return (
           <>
-          <ProductSelector submitCallback = {addToStore} buttonName = "Add to Store" action = "/store/add"/>
           {products.map(product => (
             <div className = "col" key = {"col_id" + product.id}>
               <img key = {"img_id" + product.id} src = "static/images/img.png" />
               <h2 key = {"name_id" + product.id}>{product.name}</h2>
               <h3 key = {"price_id" + product.id}>{product.price}$</h3>
-              <button key = {"purchase_button_id" + product.id} onClick={() => handlePurchase(product.id)}>
-                Purchase
-              </button>
-              <button key = {"delete_button_id" + product.id} onClick={() => handleDelete(product.id)}>
-                Delete
-              </button>
-              <ProductSelector submitCallback = {updateStoreItem} buttonName = "Update" action = "/store/update" replaceItemId = {product.id}/>
+              {cardProducts.includes(product.id) ?
+               (
+                <>
+                <b> Added to Card</b>
+                <button key = {"remove_from_card_button_id" + product.id} onClick={() => removeFromCard(product.id)}>
+                Remove From Card
+                </button>
+                </>
+               ) :
+               <button key = {"add_to_card_button_id" + product.id} onClick={() => addToCard(product.id)}>
+                Add To Card
+               </button>}
             </div>
           ))}
+          <button key = {"purchase_button_id"} onClick={handlePurchase}>
+            Purchase
+          </button>
           </>
         );
 }

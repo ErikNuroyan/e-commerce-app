@@ -1,5 +1,11 @@
-from flask import Flask, render_template, jsonify, request, Response, redirect
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, Response, redirect, url_for, flash, session
+from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager, unset_jwt_cookies, verify_jwt_in_request
+from pymongo import MongoClient
+from werkzeug.security import generate_password_hash, check_password_hash
+from bson import ObjectId
 import json
 
 app = Flask(__name__)
@@ -7,60 +13,116 @@ app.secret_key = "some_key"
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///items.sqllite3'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+jwt = JWTManager(app)
+
+
+client = MongoClient('localhost', 27017)
+mongo_db = client.flask_db
+products = mongo_db.products
+sessions = mongo_db.sessions
+orders = mongo_db.orders
+
 db = SQLAlchemy(app)
 
-class Item(db.Model):
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False, unique=True)
-    price = db.Column(db.Integer, nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    items = db.relationship('ItemTable', backref='item', lazy=True,       cascade='save-update, merge, delete',
-        passive_deletes=True)
+    email = db.Column(db.String(320), nullable=False, unique=True)
+    name = db.Column(db.String(50), nullable=False)
+    phone_number = db.Column(db.String(15), nullable=False)
+    address = db.Column(db.String(120), nullable=False)
+    password = db.Column(db.String(120), nullable=False)
     
-    def __init__(self, name, price, quantity):
+    def __init__(self, email, name, phone_number, address, password):
+        self.email = email
         self.name = name
-        self.price = price
-        self.quantity = quantity
+        self.phone_number = phone_number
+        self.address = address
+        self.password = generate_password_hash(password)
     
-class ItemTable(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id', ondelete='CASCADE'),
-        nullable=False)
-    
-    def __init__(self, item_id):
-        self.item_id = item_id
-    
+    def set_password(self, password):
+        self.password = generate_password_hash(password)
+
+    def check_password(self,password):
+        return check_password_hash(self.password,password)
+
 @app.route('/')
 def home():
     return render_template("index.html")
 
-@app.route('/store/products')
-def send_products():
-    item_list = db.session.query(ItemTable, Item).join(Item, ItemTable.item_id == Item.id).all()
+@app.route('/products')
+def get_products():
+    product_list = list(products.find())
     all_products = []
-    for item in item_list:
-        all_products.append({"id" : item[0].id, "name" : item[1].name, "price": item[1].price})
+    for product in product_list:
+        if product['quantity'] > 0:
+            all_products.append({"id" : str(product['_id']), "name" : product['name'], "description" : product['description'], "price" : product['price'], "quantity" : product['quantity']})
         
     return Response(json.dumps(all_products),  mimetype='application/json')
 
-@app.route('/unique_products')
-def send_unique_products():
-    item_list = db.session.query(Item).all()
-    all_products = []
-    for item in item_list:
-        all_products.append({"id" : item.id, "name" : item.name, "price": item.price})
-        
-    return Response(json.dumps(all_products),  mimetype='application/json')
+@app.route('/card_products')
+@jwt_required()
+def get_card_products():
+    _, _, token = request.headers['Authorization'].partition(' ')
+    session = sessions.find_one({"token": token})
+    if session is None:
+        return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
+
+    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+
+@app.route('/add_to_card', methods=['POST'])
+@jwt_required()
+def add_to_card():
+    _, _, token = request.headers['Authorization'].partition(' ')
+    session = sessions.find_one({"token": token})
+    if session is None:
+        return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
+
+    if 'item_id' in request.json:
+        item_id = ObjectId(request.json['item_id'])
+        if products.count_documents({"_id" : item_id}) == 0:
+            return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
+    else:
+        return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
 
 
-@app.route('/unique_products/add', methods=['POST'])
+    sessions.update_one({"token" : token}, {"$push": { "card_products": request.json['item_id']} })
+
+    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+
+@app.route('/remove_from_card', methods=['POST'])
+@jwt_required()
+def remove_from_card():
+    _, _, token = request.headers['Authorization'].partition(' ')
+    session = sessions.find_one({"token": token})
+    if session is None:
+        return Response(json.dumps({"status": 401, "message": "Session expired"}),  mimetype='application/json')
+
+    if 'item_id' in request.json:
+        item_id = ObjectId(request.json['item_id'])
+        if products.count_documents({"_id" : item_id}) == 0:
+            return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
+    else:
+        return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
+
+    sessions.update_one({"token" : token}, {"$pull": { "card_products": request.json['item_id']} })
+
+    return Response(json.dumps({"card_products": session["card_products"], "status": 200}),  mimetype='application/json')
+
+@app.route('/products/add', methods=['POST'])
 def add_unique_product():
     status = 200
     if 'name' in request.json:
         prod_name = request.json['name']
-        search_result = db.session.query(Item).filter_by(name = prod_name).first()
-        
-        if search_result is not None or type(prod_name) != str or prod_name == '':
+        count = products.count_documents({"name" : prod_name})
+
+        if count != 0 or type(prod_name) != str or prod_name == '':
+            status = 422
+    else:
+        status = 422
+    
+    if 'description' in request.json:
+        prod_description = request.json['description']
+        if type(prod_description) != str or prod_description == '':
             status = 422
     else:
         status = 422
@@ -80,102 +142,102 @@ def add_unique_product():
         status = 422
     
     if status == 200:
-        new_item = Item(prod_name, prod_price, prod_quantity)
-        db.session.add(new_item)
-        db.session.commit()
-        print("Product Added! name: " + prod_name + ", price: " + str(prod_price) + ", quantity: " + str(prod_quantity))
+        products.insert_one({'name' : prod_name, 'description' : prod_description, 'price' : prod_price, 'quantity' : prod_quantity})
+        print("Product Added! name: " + prod_name + ", description: " + str(prod_description) + ", price: " + str(prod_price) + ", quantity: " + str(prod_quantity))
     
     return Response(json.dumps({"add_status" : status}),  mimetype='application/json')
 
-@app.route('/store/add', methods=['POST'])
-def add_to_store():
-    status = 200
-    if 'selected_item_id' in request.json:
-        item_id = request.json['selected_item_id']
-        search_result = db.session.query(Item).filter_by(id = item_id).first()
-        
-        if search_result is None:
-            status = 422
-    else:
-        status = 422
-
-    if status == 200:
-        store_item_count = db.session.query(ItemTable).filter_by(item_id = item_id).count()
-        if store_item_count < search_result.quantity:
-            new_item = ItemTable(item_id)
-            db.session.add(new_item)
-            db.session.commit()
-            print("Product id added to ItemTable: " + str(item_id))
-        else:
-            status = 422
-    
-    return Response(json.dumps({"add_to_store_status" : status}),  mimetype='application/json')
-
-@app.route('/store/purchase', methods=['POST'])
+@app.route('/products/purchase', methods=['POST'])
+@jwt_required()
 def purchase():
     status = 200
-    if 'item_id' in request.json:
-        item_id = request.json['item_id']
-        item = db.session.query(ItemTable).filter_by(id=item_id)
-        if item.first() is None or type(item_id) != int:
-            status = 422
+    if 'item_ids' in request.json:
+        item_ids = request.json['item_ids']
+        for id in item_ids:
+            prod_id = ObjectId(id)
+            count = products.count_documents({"_id" : prod_id})
+            if count == 0 or type(id) != str:
+                status = 422
+                break
     else:
-        status = 422
+        return Response(json.dumps({"purchase_status": 422, "message": "Unprocessable request"}),  mimetype='application/json')
     
     if status == 200:
-        product = db.session.query(Item).filter_by(id = item.first().item_id).first()
-        if product.quantity > 0:
-            product.quantity -= 1
-            item.delete()
-            db.session.commit()
-            print("Purchased item_id: " + str(item_id))
-        else:
-            status = 422
+        #TODO: Add payment verification mechanism
 
-    return Response(json.dumps({"purchase_status": status}),  mimetype='application/json')
-    
-@app.route('/store/delete', methods=['POST'])
-def delete():
-    status = 200
-    if 'item_id' in request.json:
-        item_id = request.json['item_id']
-        item = db.session.query(ItemTable).filter_by(id=item_id).first()
-        if item is None or type(item_id) != int:
-            status = 422
-    else:
-        status = 422
-    
-    if status == 200:
-        db.session.query(ItemTable).filter_by(id=item_id).delete()
-        db.session.commit()
-        print("Deleted item_id: " + str(item_id))
-    
-    return Response(json.dumps({"delete_status": status}),  mimetype='application/json')
+        prod_list = list(products.find({"_id" : {"$in" : [ObjectId(x) for x in item_ids]}}))
 
-@app.route('/store/update', methods=['PUT'])
-def update():
-    status = 200
-    if 'replace_item_id' in request.json and 'selected_item_id' in request.json:
-        replace_item_id = request.json['replace_item_id']
-        selected_item_id = request.json['selected_item_id']
-        replace_item = db.session.query(ItemTable).filter_by(id = replace_item_id).first()
-        selected_item = db.session.query(Item).filter_by(id = selected_item_id).first()
-        if replace_item is None or type(replace_item_id) != int or selected_item is None or type(selected_item_id) != int:
-            print(replace_item, " ", type(replace_item_id) != int, " ", selected_item, " ", type(selected_item_id))
-            status = 422
-    else:
-        status = 422
+        prod_ids = []
+        for prod in prod_list:
+            if prod['quantity'] <= 0:
+                return Response(json.dumps({"purchase_status": 422, "message": "Not enough products left"}),  mimetype='application/json')
+            prod_ids.append(prod['_id'])
+        
+        user_mail = get_jwt_identity()
+        user = User.query.filter_by(email = user_mail).first()
+        if user is None:
+            return Response(json.dumps({"purchase_status": 422, "message": "No user found"}),  mimetype='application/json')
+
+        for prod in prod_list:
+            products.update_one({"_id" : prod['_id']}, {"$set": {"quantity": prod['quantity'] - 1}})
+            print("Purchased item_id: " + str(prod['_id']))
+        
+        orders.insert_one({'user_id' : user.id, 'products' : prod_ids, 'date' : datetime.now(), 'status' : "pending"})
+
+    return Response(json.dumps({"purchase_status": status, "message": "Products purchased successfully"}),  mimetype='application/json')
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    if not all(key in request.json for key in ('email', 'password')):
+        return Response(json.dumps({"login_status": 422, "message" : "Wrong request"}),  mimetype='application/json')
     
-    if status == 200:
-        old_count = db.session.query(ItemTable).filter_by(item_id = selected_item_id).count()
-        if old_count < selected_item.quantity:
-            replace_item.item_id = selected_item_id
-            db.session.commit()
-            print("Updated item_id: " + str(replace_item_id))
-        else:
-            status = 422
+    if any(value == "" for value in request.json.values()):
+        return Response(json.dumps({"register_status": 422, "message" : "Wrong values"}), mimetype='application/json')
+
+    user = User.query.filter_by(email = request.json['email']).first()
+    if user is not None and user.check_password(request.json['password']):
+        #TODO: Make expiring tokens
+        access_token = create_access_token(identity = request.json['email'])
+
+        #TODO: Add more fields to this
+        sessions.insert_one({'email' : request.json['email'], 'token' : access_token, "card_products": []})
+
+        return Response(json.dumps({"login_status": 200, "access_token": access_token, "user_name": user.name, "message": "Logged in Successfully"}), mimetype='application/json')
     
-    return Response(json.dumps({"update_status": status}),  mimetype='application/json')
+    return Response(json.dumps({"login_status": 401, "message": "Wrong E-Mail or password"}), mimetype='application/json')
+
+@app.route("/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    _, _, token = request.headers['Authorization'].partition(' ')
+    count = sessions.count_documents({"token" : token})
+    if count == 0:
+        return Response(json.dumps({"logout_status": 422, "message": "You are not logged in!"}), mimetype='application/json')
+    
+    sessions.delete_one({"token": token})
+    response = jsonify({"logout_status": 200, "message": "Logged out successfully"})
+    unset_jwt_cookies(response)
+    return response
+
+@app.route('/register', methods = ['POST'])
+def register():
+    if not all(key in request.json for key in ('email', 'name', 'address', 'phone_number', 'password')):
+        return Response(json.dumps({"register_status": 422, "message" : "Wrong request"}),  mimetype='application/json')
+    
+    search_result = db.session.query(User).filter_by(email = request.json['email']).first()
+    
+    if search_result is not None:
+        return Response(json.dumps({"register_status": 422, "message" : "E-Mail already registered"}), mimetype='application/json')
+        
+    if any(value == "" for value in request.json.values()):
+        return Response(json.dumps({"register_status": 422, "message" : "Wrong values"}), mimetype='application/json')
+    
+    user = User(email = request.json['email'], name = request.json['name'], address = request.json['address'], phone_number = request.json['phone_number'], password = request.json['password'])
+    db.session.add(user)
+    db.session.commit()
+    
+    return Response(json.dumps({"register_status": 200}), mimetype='application/json')
 
 if __name__ == "__main__":
     with app.app_context():

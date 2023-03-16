@@ -6,7 +6,7 @@ function App() {
 
   React.useEffect(() => {
     // Get the products
-    fetch('http://127.0.0.1:8787/products')
+    fetch('http://127.0.0.1:5000/products')
     .then(response => response.json())
     .then(products => {
       setProducts(products);
@@ -23,7 +23,7 @@ function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}
       };
       
-      fetch('http://127.0.0.1:8787/card_products', requestOptions)
+      fetch('http://127.0.0.1:5000/card_products', requestOptions)
         .then(response => response.json())
         .then(response => {
           if (response.status != 200) {
@@ -51,7 +51,7 @@ function App() {
       body: JSON.stringify({ item_ids: cardProducts})
     };
     
-    fetch('http://127.0.0.1:8787/products/purchase', requestOptions)
+    fetch('http://127.0.0.1:5000/products/purchase', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.purchase_status != 200) {
@@ -76,7 +76,7 @@ function App() {
       body: JSON.stringify({ item_id: productId})
     };
     
-    fetch('http://127.0.0.1:8787/add_to_card', requestOptions)
+    fetch('http://127.0.0.1:5000/add_to_card', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.status != 200) {
@@ -102,7 +102,7 @@ function App() {
       body: JSON.stringify({ item_id: productId})
     };
     
-    fetch('http://127.0.0.1:8787/remove_from_card', requestOptions)
+    fetch('http://127.0.0.1:5000/remove_from_card', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.status != 200) {

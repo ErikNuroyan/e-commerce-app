@@ -6,7 +6,15 @@ from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_requir
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson import ObjectId
+import argparse
 import json
+import os
+
+argParser = argparse.ArgumentParser()
+argParser.add_argument("-id", "--id", type = int,  help="server id")
+argParser.add_argument("-port", "--port", type = int,  help="port number")
+
+server_id = None
 
 app = Flask(__name__)
 app.secret_key = "some_key"
@@ -21,6 +29,7 @@ mongo_db = client.flask_db
 products = mongo_db.products
 sessions = mongo_db.sessions
 orders = mongo_db.orders
+responses = mongo_db.responses
 
 db = SQLAlchemy(app)
 
@@ -45,8 +54,15 @@ class User(UserMixin, db.Model):
     def check_password(self,password):
         return check_password_hash(self.password,password)
 
+def print_and_log(request_string):
+    dt = datetime.now()
+    print('Server id: ', server_id, ' Request: ', request_string, ' Date: ', dt)
+    responses.insert_one({'server_id' : server_id, 'request' : request_string, 'date' : dt})
+    
+
 @app.route('/')
 def home():
+    print_and_log('/')
     return render_template("index.html")
 
 @app.route('/products')
@@ -56,7 +72,8 @@ def get_products():
     for product in product_list:
         if product['quantity'] > 0:
             all_products.append({"id" : str(product['_id']), "name" : product['name'], "description" : product['description'], "price" : product['price'], "quantity" : product['quantity']})
-        
+    
+    print_and_log('/products')
     return Response(json.dumps(all_products),  mimetype='application/json')
 
 @app.route('/card_products')
@@ -69,7 +86,8 @@ def get_card_products():
 
     if session is None:
         return Response(json.dumps({"status": 401, "message": "User not logged in"}),  mimetype='application/json')
-
+    
+    print_and_log('/card_products')
     return Response(json.dumps({"card_products": user_session["card_products"], "status": 200}),  mimetype='application/json')
 
 @app.route('/add_to_card', methods=['POST'])
@@ -92,7 +110,8 @@ def add_to_card():
 
 
     sessions.update_one({'user_id': user.id}, {"$push": { "card_products": request.json['item_id']} })
-
+    print_and_log('/add_to_card')
+    
     return Response(json.dumps({"status": 200, "message": "Added to the card"}),  mimetype='application/json')
 
 @app.route('/remove_from_card', methods=['POST'])
@@ -114,7 +133,8 @@ def remove_from_card():
         return Response(json.dumps({"status": 422, "message": "Wrong Input"}),  mimetype='application/json')
 
     sessions.update_one({'user_id': user.id}, {"$pull": { "card_products": request.json['item_id']} })
-
+    
+    print_and_log('/remove_from_card')
     return Response(json.dumps({"status": 200, "message": "Removed from the card"}),  mimetype='application/json')
 
 @app.route('/products/add', methods=['POST'])
@@ -153,6 +173,8 @@ def add_unique_product():
     if status == 200:
         products.insert_one({'name' : prod_name, 'description' : prod_description, 'price' : prod_price, 'quantity' : prod_quantity})
         print("Product Added! name: " + prod_name + ", description: " + str(prod_description) + ", price: " + str(prod_price) + ", quantity: " + str(prod_quantity))
+    
+    print_and_log('/products/add')
     
     return Response(json.dumps({"add_status" : status}),  mimetype='application/json')
 
@@ -193,6 +215,8 @@ def purchase():
         
         orders.insert_one({'user_id' : user.id, 'products' : prod_ids, 'date' : datetime.now(), 'status' : "pending"})
 
+    print_and_log('/products/purchase')
+    
     return Response(json.dumps({"purchase_status": status, "message": "Products purchased successfully"}),  mimetype='application/json')
 
 
@@ -218,10 +242,12 @@ def login():
             sessions.update_one({'user_id' : user.id}, {'$push': {'active_sessions': access_token}, '$set': {'last_login': datetime.now()}})
 
         return Response(json.dumps({"login_status": 200, "access_token": access_token, "user_name": user.name, "message": "Logged in Successfully"}), mimetype='application/json')
+        
+    print_and_log('/login')
     
     return Response(json.dumps({"login_status": 401, "message": "Wrong E-Mail or password"}), mimetype='application/json')
 
-@app.route("/logout", methods=["POST"])
+@app.route('/logout', methods=["POST"])
 @jwt_required()
 def logout():
     _, _, token = request.headers['Authorization'].partition(' ')
@@ -236,6 +262,9 @@ def logout():
 
     response = jsonify({"logout_status": 200, "message": "Logged out successfully"})
     unset_jwt_cookies(response)
+    
+    print_and_log('/logout')
+    
     return response
 
 @app.route('/register', methods = ['POST'])
@@ -255,11 +284,18 @@ def register():
     db.session.add(user)
     db.session.commit()
     
+    print_and_log('/register')
+    
     return Response(json.dumps({"register_status": 200}), mimetype='application/json')
 
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+    args = argParser.parse_args()
+    if args.id == None or args.port == None:
+        print("Please specify server id and port")
+        exit()
     
-    app.run(port = 8787)
+    server_id = args.id
+    app.run(port = args.port)
 

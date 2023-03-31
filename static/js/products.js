@@ -71,9 +71,9 @@ function App() {
     }
 
     const requestOptions = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem("token")},
-      body: JSON.stringify({ item_id: productId})
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem("token")},
+    body: JSON.stringify({ item_id: productId})
     };
     
     fetch('http://127.0.0.1:5000/add_to_card', requestOptions)

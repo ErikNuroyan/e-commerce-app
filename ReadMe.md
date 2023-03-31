@@ -26,10 +26,24 @@ Open another terminal tab and run the following command:
 nginx
 ```
 
+## Run Redis Cache 
+
+Open another terminal tab and run the following command:
+
+```sh
+redis-server
+```
+
 ## Run server overload test
 
 ```sh
 cd tests && python3 server_overload.py --request_count <request_count>
 ```
 
+## System Design Info
+
+The system uses Redis caching mechanism and 2 DBs: MongoDB for storing product information and session data, SQLAlchemy DB for user information. The Redis cache stores user information and product information, since those are the most frequently accessed data. The pattern for caching is cache aside. In case of cache miss it will populate the cache from the DB. Below is its diagram.
+
+
+<img src="https://github.com/ErikNuroyan/e-commerce-app/blob/master/system_design.png"  width="700">
 

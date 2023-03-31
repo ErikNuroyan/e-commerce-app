@@ -47,3 +47,4 @@ The system uses Redis caching mechanism and 2 DBs: MongoDB for storing product i
 
 <img src="https://github.com/ErikNuroyan/e-commerce-app/blob/master/system_design.png"  width="700">
 
+The caching mechanism will increase the speed of data fetching since reading from the cache is much faster than reading from the DB. Since in most of the cases the cache is populated, the DB accesses will be much less and this will have a positive impact on the performance.

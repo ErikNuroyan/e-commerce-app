@@ -15,7 +15,7 @@ python3 products_service.py --id 1 --port 5001
 (Optional) Then open another terminal window and run this command:
 
 ```sh
-python3 products_service.py --id 2 --port 5001
+python3 products_service.py --id 2 --port 5002
 ```
 
 Open another terminal window and run the following command to start the user service:

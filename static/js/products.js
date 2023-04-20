@@ -23,7 +23,7 @@ function App() {
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}
       };
       
-      fetch('http://127.0.0.1:5000/card_products', requestOptions)
+      fetch('http://127.0.0.1:5000/user/card_products', requestOptions)
         .then(response => response.json())
         .then(response => {
           if (response.status != 200) {
@@ -76,7 +76,7 @@ function App() {
     body: JSON.stringify({ item_id: productId})
     };
     
-    fetch('http://127.0.0.1:5000/add_to_card', requestOptions)
+    fetch('http://127.0.0.1:5000/user/add_to_card', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.status != 200) {
@@ -102,7 +102,7 @@ function App() {
       body: JSON.stringify({ item_id: productId})
     };
     
-    fetch('http://127.0.0.1:5000/remove_from_card', requestOptions)
+    fetch('http://127.0.0.1:5000/user/remove_from_card', requestOptions)
       .then(response => response.json())
       .then(response => {
         if (response.status != 200) {

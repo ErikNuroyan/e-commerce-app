@@ -4,19 +4,40 @@
 
 First make sure you place ```nginx.conf``` file in the corresponding directory based on your OS. This directory typically is ```/usr/local/nginx/conf```, ```/etc/nginx```, or ```/usr/local/etc/nginx```
 
-## Run python servers
+## Run Microservices
 
-Make sure you're in the root directory and run the following command:
-
-```sh
-python3 server.py --id 1 --port 5001
-```
-
-Then open another terminal window and run this command:
+Make sure you're in the root directory and run the following command to start the products service:
 
 ```sh
-python3 server.py --id 2 --port 5002
+python3 products_service.py --id 1 --port 5001
 ```
+
+(Optional) Then open another terminal window and run this command:
+
+```sh
+python3 products_service.py --id 2 --port 5001
+```
+
+Open another terminal window and run the following command to start the user service:
+
+```sh
+python3 user_service.py --id 3 --port 5003
+```
+
+Open another terminal window and run the following command to start the logger service:
+
+```sh
+python3 logger_service.py --id 4 --port 5004
+```
+
+
+Open another terminal window and run the following command to start the orders service:
+
+```sh
+python3 orders_service.py --id 5 --port 5005
+```
+
+Note that currently the MongoDB used is run on the same port for all the services and can be easily changed to a different URL and port when deployed on the cloud.
 
 ## Run nginx server for load-balancing
 
